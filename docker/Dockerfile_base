@@ -1,0 +1,135 @@
+# Use NVIDIA's CUDA and cuDNN enabled Ubuntu image
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+
+# Set the desired NVIDIA configurations
+ENV NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+ENV NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Define ROS distribution version and other environment variables
+ENV ROS_DISTRO noetic
+
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+
+# setup timezone
+RUN echo 'Etc/UTC' > /etc/timezone && \
+    ln -s /usr/share/zoneinfo/Etc/UTC /etc/localtime && \
+    apt-get update && \
+    apt-get install -q -y --no-install-recommends tzdata
+
+# Install basic packages and set timezone
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    dirmngr \
+    gnupg2 \
+    wget \
+    curl \
+    unzip \
+    sudo \
+    gdb \
+    git \
+    tzdata && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone
+
+
+# COPIED FROM ISAACGYM DOCKERFILE
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    libxcursor-dev \
+    libxrandr-dev \
+    libxinerama-dev \
+    libxi-dev \
+    mesa-common-dev \
+    zip \
+    unzip \
+    make \
+    gcc-8 \
+    g++-8 \
+    vulkan-utils \
+    mesa-vulkan-drivers \
+    pigz \
+    git \
+    libegl1 \
+    git-lfs
+
+# Force gcc 8 to avoid CUDA 10 build issues on newer base OS
+# RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 8
+# RUN update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-8 8
+
+# WAR for eglReleaseThread shutdown crash in libEGL_mesa.so.0 (ensure it's never detected/loaded)
+# Can't remove package libegl-mesa0 directly (because of libegl1 which we need)
+RUN rm /usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0 /usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0 /usr/share/glvnd/egl_vendor.d/50_mesa.json
+
+COPY nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json
+COPY 10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+
+# # Set up ROS repository and keys
+# RUN apt-get update && \
+#     apt-get install -y lsb-release
+
+# RUN echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list
+# RUN curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add -
+
+# RUN apt-get update && apt-get install -y \
+#     ros-noetic-desktop-full
+
+# Update and install all necessary ROS and additional packages in a single RUN to minimize layers
+RUN apt-get update && apt-get install -y \
+    libusb-dev \
+    # python3-rosdep \
+    # python3-rosinstall \
+    # python3-vcstools \
+    # python-is-python3 \
+    # python3-catkin-tools \
+    python-yaml \
+    python3-pip \
+    # NOTE: These are based on VKC planner docker image.
+    # NOTE: also, it seems like these are included in full desktop version of ROS (note sure)
+    # ros-noetic-octomap-msgs \
+    # ros-noetic-octomap \
+    # ros-noetic-ompl \
+    # ros-noetic-octomap-ros \
+    # ros-noetic-lms1xx \
+    # ros-noetic-ifopt \
+    && apt-get clean
+
+# Add a user
+RUN useradd -m docker
+
+# Add the user to sudoers
+RUN usermod -aG sudo docker
+
+# Optinal: use sudo without a password prompt
+RUN echo 'docker ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# Switch to the user
+USER docker
+
+
+# Source ROS setup script on bash login
+# RUN echo "source /opt/ros/noetic/setup.bash" >> /home/docker/.bashrc
+
+
+# # FOR CONDA, this is used for later use if user want to install habitat etc..
+# RUN mkdir -p ~/miniconda3 && \
+#     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh && \
+#     bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && \
+#     rm -rf ~/miniconda3/miniconda.sh
+
+# RUN ~/miniconda3/bin/conda init bash
+
+# miniforge, includes mamba
+RUN mkdir -p ~/miniforge3 && \
+    wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -O ~/miniforge3/miniforge3.sh && \
+    bash ~/miniforge3/miniforge3.sh -b -u -p ~/miniforge3 && \
+    rm -rf ~/miniforge3/miniforge3.sh
+
+RUN ~/miniforge3/bin/conda init bash
+RUN ~/miniforge3/bin/mamba shell init -s bash
+ENV DEBIAN_FRONTEND=dialog
+
+# Default command
+CMD ["bash"]
