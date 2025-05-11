@@ -35,4 +35,4 @@ services:
       - /dev/input:/dev/input
       - /dev/bus/usb:/dev/bus/usb:rw
       - ../:/g1_cw2_ws:rw
-    entrypoint: /bin/bash -c "mamba activate rl-g1"
+    entrypoint: /bin/bash
